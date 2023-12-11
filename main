@@ -1,0 +1,680 @@
+#include <iostream>
+#include <SFML/Graphics.hpp>
+#include <SFML/Audio.hpp>
+#include <fstream>
+#include "ResourcePath.hpp"  // Assuming this is a custom header for resource paths
+#include <time.h>
+
+using namespace sf;
+using namespace std;
+
+// Constants defining the grid and window properties
+int N = 30, M = 20;
+int size = 30;
+int w = size * N;
+int h = size * M;
+int n = 0;
+int dir, num = 4;
+int maxScore = 0;
+
+int snakeX[100], snakeY[100];
+int fruitX, fruitY;
+int bombX, bombY;
+
+Clock bombAppearanceTimer;
+Clock bombDisappearanceTimer;
+float bombAppearanceDelay = 10.0;
+float bombDisappearanceDelay = 15.0;
+
+bool gamePaused = false;
+bool collisionOccurred = false;
+string playerName;
+string maxScorePlayer;
+
+Texture headTexture, bodyTexture, tailTexture;
+Texture t1, t2, t3;
+
+Text text_point;
+
+// Function to save the player's score to a file
+void SaveScore(const string& playerName, int score)
+{
+    ofstream outputFile("scores.txt", ios::app);
+    if (outputFile.is_open())
+    {
+        outputFile << playerName << " " << score << endl;
+        outputFile << endl;
+        outputFile.close();
+    }
+    else
+    {
+        cout << "Error opening file for writing." << endl;
+    }
+}
+
+// Function to load and display high scores
+void LoadScores(RenderWindow& window)
+{
+    ifstream inputFile("scores.txt");
+    if (inputFile.is_open())
+    {
+        // Font setup for displaying scores
+        Font font;
+        if (!font.loadFromFile("arial.ttf")) {
+            return EXIT_FAILURE;
+        }
+
+        Text scoreText;
+        scoreText.setFont(font);
+        scoreText.setCharacterSize(22);
+        scoreText.setFillColor(sf::Color::Cyan);
+        scoreText.setPosition(1125, 14);
+        scoreText.setStyle(Text::Bold);
+        scoreText.setString("Score Board:\n\n");
+
+        int count = 1;
+        for (; inputFile >> playerName >> score; count++)
+        {
+            scoreText.setString(scoreText.getString() + to_string(count) + "." + playerName + ": " + to_string(score) + "\n");
+        }
+
+        window.draw(scoreText);
+
+        inputFile.close();
+    }
+    else
+    {
+        std::cout << "No scores found." << std::endl;
+    }
+}
+
+// Function to pause the game
+void PauseGame()
+{
+    gamePaused = !gamePaused;
+}
+
+// Function to update the snake's position and handle collisions
+void Tick(RenderWindow& window)
+{
+    if (gamePaused && collisionOccurred)
+        return;
+
+    for (int i = num; i > 0; --i)
+    {
+        snakeX[i] = snakeX[i - 1];
+        snakeY[i] = snakeY[i - 1];
+    }
+
+    if (dir == 0)
+        snakeY[0] += 1;
+    if (dir == 1)
+        snakeX[0] -= 1;
+    if (dir == 2)
+        snakeX[0] += 1;
+    if (dir == 3)
+        snakeY[0] -= 1;
+
+    for (int i = 1; i < num; i++)
+        if (snakeX[0] == snakeX[i] && snakeY[0] == snakeY[i])
+        {
+            SaveScore(playerName, n);
+            gamePaused = true;
+            collisionOccurred = true;
+            return;
+        }
+    if (n <= -1)
+    {
+        gamePaused = true;
+        collisionOccurred = true;
+        return;
+    }
+
+    if ((snakeX[0] == fruitX) && (snakeY[0] == fruitY))
+    {
+        n++;
+        num++;
+        fruitX = rand() % N;
+        fruitY = rand() % M;
+        text_point.setString(to_string(n));
+    }
+
+    if (bombAppearanceTimer.getElapsedTime().asSeconds() > bombAppearanceDelay)
+    {
+        bombX = rand() % N;
+        bombY = rand() % M;
+        bombAppearanceTimer.restart();
+        bombDisappearanceTimer.restart();
+    }
+
+    if (bombDisappearanceTimer.getElapsedTime().asSeconds() > bombDisappearanceDelay)
+    {
+        bombX = N + 1;
+        bombY = M + 1;
+    }
+
+    if ((snakeX[0] == bombX) && (snakeY[0] == bombY))
+    {
+        if (num > 1)
+            num--;
+
+        bombX = N + 1;
+        bombY = M + 1;
+
+        bombAppearanceTimer.restart();
+        bombDisappearanceTimer.restart();
+        n--;
+        text_point.setString(to_string(n));
+    }
+
+    if (snakeX[0] > N)
+        snakeX[0] = 0;
+    if (snakeX[0] < 0)
+        snakeX[0] = N;
+    if (snakeY[0] > M)
+        snakeY[0] = 0;
+    if (snakeY[0] < 0)
+        snakeY[0] = M;
+}
+
+// Function to display the player with the highest score
+void displayMaxScorePlayer(RenderWindow& window)
+{
+    ifstream file("scores.txt");
+
+    if (!file.is_open())
+    {
+        cout << "Error opening file." << endl;
+        return;
+    }
+
+    // Font setup for displaying max score player
+    Font font;
+    if (!font.loadFromFile("arial.ttf"))
+    {
+        return;
+    }
+
+    Text maxScoreText;
+    maxScoreText.setFont(font);
+    maxScoreText.setCharacterSize(28);
+    maxScoreText.setFillColor(sf::Color::Yellow);
+    maxScoreText.setPosition(0, 70);
+    maxScoreText.setStyle(Text::Bold);
+
+    int score = 0;
+    string tempPlayer;
+
+    while (file >> tempPlayer >> score)
+    {
+        if (score > maxScore)
+        {
+            maxScore = score;
+            maxScorePlayer = tempPlayer;
+        }
+    }
+
+    file.close();
+
+    if (maxScorePlayer.empty())
+    {
+        maxScoreText.setString("No Data Available ");
+    }
+    else
+    {
+        maxScoreText.setString("Highest Score: \n" + maxScorePlayer + " :" + to_string(maxScore));
+    }
+
+    window.draw(maxScoreText);
+}
+
+// Function to update the scores file, keeping only the highest score for each player
+void updateMaxNumberFile()
+{
+    ifstream file("scores.txt");
+
+    if (!file.is_open())
+    {
+        cout << "Error opening file: " << endl;
+        return;
+    }
+
+    // Constants
+    const int maxPlayers = 100;
+    string players[maxPlayers];
+    int maxNumbers[maxPlayers] = {0};
+
+    int numPlayers = 0;
+
+    string playerName;
+    int playerNumber;
+
+    while (file >> playerName >> playerNumber)
+    {
+        bool isNewPlayer = true;
+
+        for (int i = 0; i < numPlayers; ++i)
+        {
+            if (players[i] == playerName)
+            {
+                if (playerNumber > maxNumbers[i])
+                {
+                    maxNumbers[i] = playerNumber;
+                }
+
+                isNewPlayer = false;
+                break;
+            }
+        }
+
+        if (isNewPlayer)
+        {
+            players[numPlayers] = playerName;
+            maxNumbers[numPlayers] = playerNumber;
+            ++numPlayers;
+        }
+    }
+
+    file.close();
+
+    ofstream outFile("scores.txt");
+
+    if (!outFile.is_open())
+    {
+        cerr << "Error opening file for writing: " << endl;
+        return;
+    }
+
+    for (int i = 0; i < numPlayers; ++i)
+    {
+        outFile << players[i] << " " << maxNumbers[i] << endl;
+    }
+
+    outFile.close();
+}
+
+// Main function
+int main()
+{
+    // Initialization
+    srand(time(0));
+
+    // Create the main game window
+    RenderWindow window(VideoMode(1300, 700), "Serpent Saga");
+
+    // Background music setup
+    Music music;
+    if (!music.openFromFile(resourcePath() + "doodle_pop.ogg")) {
+        return EXIT_FAILURE;
+    }
+
+    // Load game icon
+    Image icon;
+    if (!icon.loadFromFile(resourcePath() + "icon.png"))
+    {
+        return EXIT_FAILURE;
+    }
+    window.setIcon(icon.getSize().x, icon.getSize().y, icon.getPixelsPtr());
+
+    // Font and text setup
+    Font font;
+    Text title, options1, options2, options3, author;
+
+    if (!font.loadFromFile(resourcePath() + "arial.ttf"))
+    {
+        cout << "Error loading font." << endl;
+        return EXIT_FAILURE;
+    }
+    else
+    {
+        // Title setup
+        title.setFont(font);
+        title.setString("Serpent Saga");
+        title.setCharacterSize(45);
+        title.setStyle(Text::Bold);
+        title.setFillColor(Color::Green);
+        title.setPosition(470, 0);
+
+        // Current score text setup
+        text_point.setFont(font);
+        text_point.setString(to_string(n));
+        text_point.setCharacterSize(30);
+        text_point.setStyle(Text::Bold);
+        text_point.setPosition(200, 10);
+
+        // Restart option text setup
+        options1.setFont(font);
+        options1.setString("PRESS R TO RESTART");
+        options1.setCharacterSize(32);
+        options1.setStyle(Text::Bold);
+        options1.setPosition(30, 580);
+
+        // Pause and rewind option text setup
+        options2.setFont(font);
+        options2.setString("PRESS P to Pause and Rewind");
+        options2.setCharacterSize(32);
+        options2.setStyle(Text::Bold);
+        options2.setPosition(30, 620);
+
+        // Your Score text setup
+        options3.setFont(font);
+        options3.setString("Your Score:");
+        options3.setCharacterSize(32);
+        options3.setStyle(Text::Bold);
+        options3.setFillColor(Color::Magenta);
+        options3.setPosition(10, 10);
+
+        // Author text setup
+        author.setFont(font);
+        author.setString(playerName);
+        author.setCharacterSize(40);
+        author.setStyle(Text::Bold);
+        author.setFillColor(sf::Color(140, 0, 500));
+        author.setPosition(1124, 620);
+    }
+
+    // Textures setup
+    headTexture.loadFromFile(resourcePath() + "cartoon.png");
+    bodyTexture.loadFromFile(resourcePath() + "blue.png");
+    tailTexture.loadFromFile(resourcePath() + "tail.png");
+
+    t1.loadFromFile(resourcePath() + "gback.png");
+    t2.loadFromFile(resourcePath() + "apple48.png");
+    t3.loadFromFile(resourcePath() + "bomb48.png");
+
+    // Game over and pause screen textures setup
+    Texture texture;
+    if (!texture.loadFromFile(resourcePath() + "gameover.jpg")) {
+        return EXIT_FAILURE;
+    }
+    Sprite sprite(texture);
+    sprite.setPosition(264, 60);
+
+    Texture texture1;
+    if (!texture1.loadFromFile(resourcePath() + "game_pause.jpg")) {
+        return EXIT_FAILURE;
+    }
+    Sprite sprite0(texture1);
+    sprite0.setPosition(260, 50);
+
+    Sprite sprite1(t1);
+    Sprite sprite2(bodyTexture);
+    Sprite sprite3(t2);
+    Sprite sprite4(t3);
+
+    sprite2.setScale(0.03, 0.03);
+
+    Clock clock;
+    float timer = 0, delay = 0.1;
+
+    fruitX = 10;
+    fruitY = 10;
+
+    bombX = N + 1;
+    bombY = M + 1;
+
+    // Name entry window
+    RenderWindow nameWindow(VideoMode(1300, 700), "Enter Your Name");
+
+    Texture textureInput;
+    if (!textureInput.loadFromFile(resourcePath() + "background.jpeg")) {
+        return EXIT_FAILURE;
+    }
+    Sprite spriteInput(textureInput);
+    spriteInput.setPosition(0, 0);
+
+    Font nameFont;
+    nameFont.loadFromFile(resourcePath() + "arial.ttf");
+
+    Text greet;
+    greet.setFont(nameFont);
+    greet.setString("Greetings, Serpent");
+    greet.setStyle(Text::Bold);
+    greet.setCharacterSize(60);
+    greet.setFillColor(Color::Blue);
+    greet.setPosition(400, 30);
+
+    Text nameText;
+    nameText.setFont(nameFont);
+    nameText.setStyle(Text::Bold);
+    nameText.setString("Enter Your Name:");
+    nameText.setCharacterSize(30);
+    nameText.setFillColor(Color::Red);
+    nameText.setPosition(402, 120);
+
+    Text inputText;
+    inputText.setFont(nameFont);
+    inputText.setStyle(Text::Bold);
+    inputText.setCharacterSize(28);
+    inputText.setFillColor(Color::White);
+    inputText.setPosition(450, 160);
+
+    bool nameEntered = false;
+
+    while (nameWindow.isOpen())
+    {
+        music.play();
+
+        Event nameEvent;
+        while (nameWindow.pollEvent(nameEvent))
+        {
+            if (nameEvent.type == Event::Closed)
+            {
+                nameWindow.close();
+                window.close();
+            }
+
+            if (nameEvent.type == Event::KeyPressed && nameEvent.key.code == Keyboard::Escape)
+            {
+                SaveScore(playerName, n);
+                nameWindow.close();
+                window.close();
+            }
+
+            if (nameEvent.type == Event::TextEntered)
+            {
+                if (nameEntered)
+                    continue;
+
+                if (nameEvent.text.unicode == '\b' && !playerName.empty())
+                {
+                    playerName.pop_back();
+                }
+                else if (nameEvent.text.unicode < 128)
+                {
+                    playerName += static_cast<char>(nameEvent.text.unicode);
+                }
+
+                inputText.setString(playerName);
+            }
+
+            if (nameEvent.type == Event::KeyPressed)
+            {
+                if (nameEvent.key.code == Keyboard::Return && !playerName.empty())
+                {
+                    nameEntered = true;
+                    nameWindow.close();
+                }
+            }
+        }
+
+        nameWindow.clear();
+        nameWindow.draw(spriteInput);
+        nameWindow.draw(greet);
+        nameWindow.draw(nameText);
+        nameWindow.draw(inputText);
+        nameWindow.display();
+    }
+
+    // Author text update with player name
+    author.setString(playerName);
+
+    while (window.isOpen())
+    {
+        float time = clock.getElapsedTime().asSeconds();
+        clock.restart();
+        timer += time;
+
+        Event e;
+                while (window.pollEvent(e))
+        {
+ 
+
+            if (e.type == Event::Closed)
+                window.close();
+
+            if (e.type == Event::KeyPressed && e.key.code == Keyboard::Escape)
+            {
+                SaveScore(playerName, n);
+
+                window.close();
+            }
+
+            if (e.type == Event::KeyPressed)
+            {
+                if (e.key.code == Keyboard::Left)
+                    dir = 1;
+                if (e.key.code == Keyboard::Right)
+                    dir = 2;
+                if (e.key.code == Keyboard::Up)
+                    dir = 3;
+                if (e.key.code == Keyboard::Down)
+                    dir = 0;
+
+                if (e.key.code == Keyboard::R)
+                {
+                    SaveScore(playerName, n);
+
+                    n = 0;
+                    num = 4;
+                    dir = 0;
+                    snakeX[0] = 10;
+                    snakeY[0] = 10;
+                    text_point.setString(to_string(n));
+
+                    for (int i = 1; i < num; i++)
+                    {
+                        snakeX[i] = snakeX[i - 1] - 1;
+                        snakeY[i] = snakeY[i - 1];
+                    }
+
+                    fruitX = 5;
+                    fruitY = 5;
+
+                    bombX = N + 1;
+                    bombY = M + 1;
+
+                    bombAppearanceTimer.restart();
+                    bombDisappearanceTimer.restart();
+
+                    gamePaused = false;
+                    collisionOccurred = false;
+
+                  //  SaveScore(playerName, n);
+                }
+
+                if (e.key.code == Keyboard::P && !collisionOccurred)
+                    PauseGame();
+            }
+        }
+
+        if (!gamePaused)
+        {
+            if (timer > delay)
+            {
+                timer = 0;
+                Tick(window);
+                
+
+            }
+        }
+
+
+
+            window.clear();
+
+        int startX = (window.getSize().x - w) / 2;
+        int startY = (window.getSize().y - h) / 2;
+
+        for (int i = 0; i <= N; i++)
+            for (int j = 0; j <= M; j++)
+            {
+                sprite1.setPosition(startX + i * size, startY + j * size);
+                window.draw(sprite1);
+            }
+
+        for (int i = 0; i < num; i++)
+        {
+            if (i == 0)
+            {
+                sprite2.setTexture(headTexture);
+                sprite2.setScale(0.05,0.05);
+            }
+            else if (i == num - 1)
+            {
+                sprite2.setTexture(tailTexture);
+                sprite2.setScale(0.03,0.03);
+
+            }
+
+            else
+            {
+                sprite2.setTexture(bodyTexture);
+                sprite2.setScale(0.03,0.03);
+            }
+            updateMaxNumberFile();
+            
+            sprite2.setPosition(startX + snakeX[i] * size, startY + snakeY[i] * size);
+            window.draw(sprite2);
+        }
+
+
+        
+        
+        
+        
+        sprite3.setPosition(startX + fruitX * size, startY + fruitY * size);
+        window.draw(sprite3);
+
+        sprite4.setPosition(startX + bombX * size, startY + bombY * size);
+        window.draw(sprite4);
+
+        window.draw(title);
+        window.draw(text_point);
+        window.draw(options1);
+        window.draw(options2);
+        window.draw(options3);
+        window.draw(author);
+        LoadScores(window);
+        displayMaxScorePlayer(window);
+        
+
+        if ((gamePaused)){
+            
+            
+            window.draw(sprite0);
+
+
+        }
+
+        
+        if ((collisionOccurred)){
+            window.draw(sprite);
+            
+        }
+        window.display();
+        music.play();
+    }
+
+
+    
+    updateMaxNumberFile();
+
+  
+   
+
+    return 0;
+}
+
+
+
